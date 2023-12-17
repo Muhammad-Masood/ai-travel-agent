@@ -6,17 +6,22 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+
+assistant_id: str = ""
+client:OpenAI
+
 def createClient(api_key: str) -> OpenAI:
     try:
-        client: OpenAI = OpenAI(api_key=api_key)
+        global client
+        client = OpenAI(api_key=api_key)
         print(client)
         return client
     except:
         st.toast("Invalid API Key", icon="🚨")
 
-def createAssistant(client: OpenAI) -> tuple[Assistant,Thread]:
+def createAssistant() -> tuple[Assistant,Thread]:
     try:
-        assistant: Assistant = client.beta.assistants.create(
+        assistant: Assistant = retrieveClient().beta.assistants.create(
         name="Tripper",
         instructions="You are a helpful travel agent assistant that will help global travelers find the best destinations. When any user ask you regarding any travel related query or ask for any advice regarding destinations, provide it with the best recommendations and information available.",
         model="gpt-3.5-turbo",
@@ -27,38 +32,51 @@ def createAssistant(client: OpenAI) -> tuple[Assistant,Thread]:
         ],
     )
         print(assistant)
+        assistant_id = assistant.id
         thread:Thread = client.beta.threads.create()
         return assistant,thread
     except:
         st.toast("Error creating Tripper or Invalid API Key", icon="🚨")
 
-def createMessageAndRun(client:OpenAI, _thread_id:str, _content: str, _assistant_id:str):
-    client.beta.threads.messages.create(
+def createMessageAndRun(_thread_id:str, _content: str):
+    retrieveClient().beta.threads.messages.create(
     thread_id=_thread_id,
     role="user",
     content=_content
     )
+    global assistant_id
     run = client.beta.threads.runs.create(
     thread_id=_thread_id,
-    assistant_id=_assistant_id,
+    assistant_id=assistant_id,
     )
+
+def setAssistantId(_assistant_id:str)->None:
+    global assistant_id
+    assistant_id = _assistant_id
+
+def retrieveClient() -> OpenAI:
+    global client
+    return client
 
 
 with st.sidebar:
     st.title("Create Tripper")
-    openai_api_key: str = st.text_input(
+    openai_api_key: str = ""
+    openai_api_key = st.text_input(
         "Enter your OpenAI api key to create an assistant", type="password"
     )
     if openai_api_key:
-        client: OpenAI = createClient(openai_api_key)
-        createAssistant(client=client)
+        createClient(openai_api_key)
+        (assistant,thread) = createAssistant()
     st.title("Already Created Tripper?")
     st.text("Or access your assistant directly if already created")
-    api_key: str = st.text_input(
+    openai_api_key = st.text_input(
         "OpenAI API key", key="openai_api_key", type="password"
     )
-    if(api_key):
-        client: OpenAI = createClient(api_key)
+    assistant_id = st.text_input("Assistant ID", key="assistant_id")
+    setAssistantId(assistant_id)
+    if(openai_api_key):
+        createClient(openai_api_key)
     "[Get an OpenAI API key](https://platform.openai.com/account/api-keys)"
     "[![View the source code](https://github.com/codespaces/badge.svg)]()"
 
@@ -77,6 +95,7 @@ if prompt := st.chat_input():
 
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user").write(prompt)
+    createMessageAndRun()
     # msg = # get response from assistant
     # st.session_state.append(msg)
     # st.chat_message("assistant").write(msg.content)
