@@ -1,84 +1,44 @@
-import openai
-from openai import OpenAI
-from openai.types.beta.assistant import Assistant
-from openai.types.beta.thread import Thread
 import streamlit as st
 import pandas as pd
 import numpy as np
+import time
+from model import ClientModel, AssistantModel
+from openai.types.beta.threads.thread_message import ThreadMessage
 
-
-assistant_id: str = ""
-client:OpenAI
-
-def createClient(api_key: str) -> OpenAI:
-    try:
-        global client
-        client = OpenAI(api_key=api_key)
-        print(client)
-        return client
-    except:
-        st.toast("Invalid API Key", icon="🚨")
-
-def createAssistant() -> tuple[Assistant,Thread]:
-    try:
-        assistant: Assistant = retrieveClient().beta.assistants.create(
-        name="Tripper",
-        instructions="You are a helpful travel agent assistant that will help global travelers find the best destinations. When any user ask you regarding any travel related query or ask for any advice regarding destinations, provide it with the best recommendations and information available.",
-        model="gpt-3.5-turbo",
-        tools=[
-            {"type": "code_interpreter"},
-            {"type": "retrieval"},
-            {"type": "function"},
-        ],
-    )
-        print(assistant)
-        assistant_id = assistant.id
-        thread:Thread = client.beta.threads.create()
-        return assistant,thread
-    except:
-        st.toast("Error creating Tripper or Invalid API Key", icon="🚨")
-
-def createMessageAndRun(_thread_id:str, _content: str):
-    retrieveClient().beta.threads.messages.create(
-    thread_id=_thread_id,
-    role="user",
-    content=_content
-    )
-    global assistant_id
-    run = client.beta.threads.runs.create(
-    thread_id=_thread_id,
-    assistant_id=assistant_id,
-    )
-
-def setAssistantId(_assistant_id:str)->None:
-    global assistant_id
-    assistant_id = _assistant_id
-
-def retrieveClient() -> OpenAI:
-    global client
-    return client
-
+assistantModel: AssistantModel = AssistantModel()
+clientModel: ClientModel = ClientModel()
 
 with st.sidebar:
     st.title("Create Tripper")
-    openai_api_key: str = ""
-    openai_api_key = st.text_input(
-        "Enter your OpenAI api key to create an assistant", type="password"
+    openai_api_key1: str = st.text_input(
+        "Enter your OpenAI api key to create an assistant",
+        type="password",
+        key="openai_api_key1",
     )
-    if openai_api_key:
-        createClient(openai_api_key)
-        (assistant,thread) = createAssistant()
+    if openai_api_key1 and "assistant_created" not in st.session_state:
+        try:
+            clientModel.createClient(openai_api_key1)
+            assistantModel.createAssistant(clientModel.retrieveCliet())
+            st.session_state["assistant_created"] = True
+            st.toast("Tripper Created Successfully.", icon="✅")
+        except Exception as e:
+            st.toast(f"error: {e}", icon="🚨")
     st.title("Already Created Tripper?")
     st.text("Or access your assistant directly if already created")
-    openai_api_key = st.text_input(
-        "OpenAI API key", key="openai_api_key", type="password"
+    openai_api_key2: str = st.text_input(
+        "OpenAI API key", key="openai_api_key2", type="password"
     )
-    assistant_id = st.text_input("Assistant ID", key="assistant_id")
-    setAssistantId(assistant_id)
-    if(openai_api_key):
-        createClient(openai_api_key)
+    assistant_id: str = st.text_input("Assistant ID", key="assistant_id")
+    if openai_api_key2 and assistant_id and "assistant_recovered" not in st.session_state:
+        try:
+            clientModel.createClient(openai_api_key2)
+            assistantModel.setAssistantById(assistant_id, clientModel.retrieveClient())
+            assistantModel.createThread(clientModel.retrieveClient())
+            st.session_state["assistant_recovered"] = True
+            st.toast("Tripper Recovered Successfully.", icon="✅")
+        except Exception as e:
+            st.toast(f"error: {e}", icon="🚨")
     "[Get an OpenAI API key](https://platform.openai.com/account/api-keys)"
-    "[![View the source code](https://github.com/codespaces/badge.svg)]()"
 
 st.title("🗺️ Tripper")
 if "messages" not in st.session_state:
@@ -89,13 +49,14 @@ for msg in st.session_state.messages:
     st.chat_message(msg["role"]).write(msg["content"])
 
 if prompt := st.chat_input():
-    if not openai_api_key:
+    if not openai_api_key1 and not openai_api_key2:
         st.info("Please add your OpenAI API key to continue.")
         st.stop()
 
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user").write(prompt)
-    createMessageAndRun()
-    # msg = # get response from assistant
-    # st.session_state.append(msg)
-    # st.chat_message("assistant").write(msg.content)
+    messages = assistantModel.createAndRunMessage(prompt, clientModel.retrieveClient())
+    print(messages)
+    for msg in messages:
+        st.session_state.messages.append({"role": "assistant", "content": msg.content[0].text.value})
+        st.chat_message("assistant").write(msg.content[0].text.value)
