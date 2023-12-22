@@ -7,6 +7,10 @@ from openai.types.beta.threads.thread_message import ThreadMessage
 
 assistantModel: AssistantModel = AssistantModel()
 clientModel: ClientModel = ClientModel()
+if "assistant_model" not in st.session_state:
+    st.session_state["assistant_model"] = assistantModel
+if "client_model" not in st.session_state:
+    st.session_state["client_model"] = clientModel
 
 with st.sidebar:
     st.title("Create Tripper")
@@ -17,8 +21,9 @@ with st.sidebar:
     )
     if openai_api_key1 and "assistant_created" not in st.session_state:
         try:
-            clientModel.createClient(openai_api_key1)
-            assistantModel.createAssistant(clientModel.retrieveCliet())
+            st.session_state.client_model.createClient(openai_api_key1)
+            st.session_state.assistant_model.createAssistant(clientModel.retrieveClient())
+            st.write("Your Tripper ID",st.session_state.assistant_model.getAssistant().id)
             st.session_state["assistant_created"] = True
             st.toast("Tripper Created Successfully.", icon="✅")
         except Exception as e:
@@ -28,12 +33,13 @@ with st.sidebar:
     openai_api_key2: str = st.text_input(
         "OpenAI API key", key="openai_api_key2", type="password"
     )
-    assistant_id: str = st.text_input("Assistant ID", key="assistant_id")
+    assistant_id: str = st.text_input("Tripper ID", key="assistant_id")
     if openai_api_key2 and assistant_id and "assistant_recovered" not in st.session_state:
         try:
-            clientModel.createClient(openai_api_key2)
-            assistantModel.setAssistantById(assistant_id, clientModel.retrieveClient())
-            assistantModel.createThread(clientModel.retrieveClient())
+            print("recovering tripper...")
+            st.session_state.client_model.createClient(openai_api_key2)
+            st.session_state.assistant_model.setAssistantById(assistant_id, st.session_state.client_model.retrieveClient())
+            st.session_state.assistant_model.createThread(st.session_state.client_model.retrieveClient())
             st.session_state["assistant_recovered"] = True
             st.toast("Tripper Recovered Successfully.", icon="✅")
         except Exception as e:
@@ -55,8 +61,7 @@ if prompt := st.chat_input():
 
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user").write(prompt)
-    messages = assistantModel.createAndRunMessage(prompt, clientModel.retrieveClient())
+    messages = st.session_state.assistant_model.createAndRunMessage(prompt, st.session_state.client_model.retrieveClient())
     print(messages)
-    for msg in messages:
-        st.session_state.messages.append({"role": "assistant", "content": msg.content[0].text.value})
-        st.chat_message("assistant").write(msg.content[0].text.value)
+    st.session_state.messages.append({"role": "assistant", "content": messages.data[0].content[0].text.value})
+    st.chat_message("assistant").write(messages.data[0].content[0].text.value)
